@@ -6,8 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 # Page setup
@@ -117,17 +116,16 @@ if user_query := st.chat_input("Ask a question about your uploaded documents..."
                     google_api_key=st.session_state.gemini_api_key,
                     temperature=0.2
                 )
-                combine_docs_chain = create_stuff_documents_chain(llm, prompt)
-                rag_chain = create_retrieval_chain(retriever, combine_docs_chain)
-
-                response = rag_chain.invoke({"input": user_query})
-                answer = response["answer"]
+                retrieved_docs = retriever.invoke(user_query)
+                context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
+                rag_chain = prompt | llm | StrOutputParser()
+                answer = rag_chain.invoke({"context": context_text, "input": user_query})
 
                 st.markdown(answer)
 
                 # Context sources expander
                 with st.expander("Retrieved Source Passages"):
-                    for doc in response["context"]:
+                    for doc in retrieved_docs:
                         src = doc.metadata.get("source_file", "Unknown")
                         page = doc.metadata.get("page", 0) + 1
                         st.markdown(f"**Source:** `{src}` (Page {page})")
